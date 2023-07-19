@@ -64,7 +64,6 @@ private:
                 this->buildGraph(G, child, operation);
             }
         }
-
     }
     
 public:
