@@ -1,156 +1,306 @@
 
 #pragma once
-#include "value_network.hpp"
 
 #include <iostream>
 #include <string.h>
 #include <math.h>
+#include <memory>
+#include <unordered_set>
+#include <unordered_map>
 
-#include <random>
-#include <fstream>
-#include <cstring>
-#include <ctime>
-#include <graphviz/gvc.h>
-#include <graphviz/cgraph.h>
-
-class Value 
+namespace grad 
 {
-    
+
+class Value {
     friend class ValueNetwork;
-    friend Value operator+(const int &value, Value &other);
-    friend Value operator-(const int &value, Value &other);
-    friend Value operator*(const int &value, Value &other);
-
 private:
-    std::string op;
+    class impl
+    {
+    private:
+        std::shared_ptr<impl> prev[2] = {nullptr, nullptr};
+        Value& outer; 
 
-    void backward() {
-        if (this->op == "+") {
-            prev[0]->grad += this->grad;
-            prev[1]->grad += this->grad;
-        } else if (this->op == "*") {
-            prev[0]->grad += prev[1]->data * this->grad;
-            prev[1]->grad += prev[0]->data * this->grad;
-        } else if (this->op == "tanh") {
-            prev[0]->grad += (1 - (this->data * this->data)) * this->grad;
-        }
-    }
-
-    void internalBackpropagate() {
-        if (this->op == "") return;
-        this->backward();
-        for (int i=0; i<2; i++) {
-            Value* child = prev[i];
-            if (child != nullptr) {
-                child->internalBackpropagate();
+        void backward() {
+            if (this->op == "+") {
+                prev[0]->grad += 1.0 * this->grad;
+                prev[1]->grad += 1.0 * this->grad;
+            } else if (this->op == "-") {
+                prev[0]->grad += this->grad;
+                prev[1]->grad += -1.0 * this->grad;
+            } else if (this->op == "*") {
+                prev[0]->grad += prev[1]->data * this->grad;
+                prev[1]->grad += prev[0]->data * this->grad;
+            } else if (this->op == "tanh") {
+                prev[0]->grad += (1 - (this->data * this->data)) * this->grad;
+            } else if (this->op == "exp") {
+                prev[0]->grad += this->data * this->grad;
+            } else if (this->op == "^") {
+                double exponent = prev[1]->data;
+                prev[0]->grad += exponent * (std::pow(prev[0]->data, exponent-1)) * this->grad; 
             }
         }
-    }
-    
-    void deepCopy(Value* current, Value* other) {
-        current->data = other->data;
-        current->grad = other->grad;
-        current->label = other->label;
-        current->op = other->op;
 
-        if (other->prev[0] == nullptr) {
+        void sortIntoTopologicalOrder(std::shared_ptr<impl> &current, 
+                                      std::unordered_set<Value::impl*> &explored,
+                                      std::unordered_map<int, Value::impl*> &order, 
+                                      int &currentIndex) {
+            
+            if (current->op != "") {
+                for (int i=0; i<2; i++) {
+                    std::shared_ptr<impl>& child = current->prev[i];
+                    if (child != nullptr && explored.find(child.get()) == explored.end()) {
+                        sortIntoTopologicalOrder(child, explored, order, currentIndex);
+                    }
+                }
+            }
+
+            explored.insert(current.get());
+            order[currentIndex] = current.get();
+            currentIndex++;
             return;
         }
 
-        current->prev[0] = new Value();
-        deepCopy(current->prev[0], other->prev[0]);
-        if (other->prev[1] != nullptr) {
-            current->prev[1] = new Value();
-            deepCopy(current->prev[1], other->prev[1]);
-        }
-    }
-    
-    Value(Value &value, bool check) {
-        deepCopy(this, &value);
-    }
-public:
-    Value* prev[2] = {nullptr, nullptr};
-    double data; 
-    double grad = 0.0;
-    std::string label = "";
-    Value() {
-        this->data = 0.0;
-        this->op = "";
-    }
-    Value(double data, std::initializer_list<Value> children = {}, std::string op = "") {
-        this->data = data;
-        int i = 0;
-        for (auto child: children) {
-
-            prev[i] = new Value(child, true);
-            i++;
-        }
-        this->op = op;
-    }
-    
-    friend std::ostream & operator << (std::ostream &out, Value &v) {
-        out << "Value(data=" << v.data << ")" << std::endl;
-        return out;
-    }
-    
-    Value operator=(const double &value) {
-        return Value(value);
-    }
-
-    Value operator+(const double &value) {
-        Value v = Value(value);
-        return (*this) + v;
-    }
-    Value operator+(Value &value) {
-        double sum = this->data + value.data;
-        Value current = *this;
-        Value v = Value(sum, {current, value}, "+");
-        return v;
-    }
-
-    Value operator-(Value &value) {
-        double difference = this->data - value.data;
-        Value current = *this;
-        Value v = Value(difference, {current, value}, "-");
-        return v;
-    }
-
-    Value operator*(Value &value) {
-        double product = this->data * value.data;
-        Value current = *this;
-        Value v = Value(product, {current, value}, "*");
-        return v;
-    }
-    
-    Value tanh() {
-        double x = this->data;
-        double t = (std::exp(x * 2)-1)/(std::exp(x * 2)+1);
-
-        Value current = *this;
-        Value out = Value(t, {current}, "tanh");
-        return out;
-
-    }
-
-    Value exp() {
+    public:
+        double data; 
+        double grad = 0.0;
+        std::string label = "";
+        std::string op = "";
         
+        impl(Value &outer) : outer(outer) {
+            this->data = 0.0;
+        }
+        
+        impl(Value &outer, double data) : outer(outer) {
+            this->data = data;
+        }
+
+        impl(Value &outer, double data, std::string label) : impl(outer, data) {
+            // this->data = data;
+            this->label = label;
+        }
+
+        impl(
+            Value &outer, 
+            double data, 
+            const std::shared_ptr<impl>& a, 
+            std::string op, 
+            const std::shared_ptr<impl>& b = nullptr
+            ) : outer(outer) {
+
+            this->data = data;
+            prev[0] = std::shared_ptr<impl>(a);
+            if (b != nullptr) {
+                prev[1] = std::shared_ptr<impl>(b);
+            }
+            this->op = op;
+        }
+
+        std::shared_ptr<impl>& getChild(const int &i) {
+            return this->prev[i];
+        }
+        
+        Value raiseTo(const double &value) {
+            Value v = Value(value);
+            return this->raiseTo(v);
+        }
+        
+        Value raiseTo(Value &value) {
+            double power = std::pow(this->data, value.data());
+            Value v = Value(power, this->outer.pimpl, "^", value.pimpl);
+            return v;
+        }
+
+        Value operator+(const double &value) {
+            Value v = Value(value);
+            return (*this) + v;
+        }
+
+        Value operator+(Value &&value) {
+            double sum = this->data + value.data();
+            Value v = Value(sum, this->outer.pimpl, "+", value.pimpl);
+            return v;
+        }
+
+        Value operator+(Value &value) {
+            double sum = this->data + value.data();
+            Value v = Value(sum, this->outer.pimpl, "+", value.pimpl);
+            return v;
+        }
+
+        Value operator-(const double &value) {
+            Value v = Value(value);
+            return (*this) - v;
+        }
+
+        Value operator-(Value &&value) {
+            double sum = this->data - value.data();
+            Value v = Value(sum, this->outer.pimpl, "-", value.pimpl);
+            return v;
+        }
+
+        Value operator-(Value &value) {
+            double sum = this->data - value.data();
+            Value v = Value(sum, this->outer.pimpl, "-", value.pimpl);
+            return v;
+        }
+
+        Value operator*(const double &value) {
+            Value v = Value(value);
+            return (*this) * v;
+        }
+
+        Value operator*(Value &&value) {
+            double sum = this->data * value.data();
+            Value v = Value(sum, this->outer.pimpl, "*", value.pimpl);
+            return v;
+        }
+
+        Value operator*(Value &value) {
+            double sum = this->data * value.data();
+            Value v = Value(sum, this->outer.pimpl, "*", value.pimpl);
+            return v;
+        }
+
+        Value operator/(const double &value) {
+            Value v = Value(value);
+            return (*this) / v;
+        }
+
+        Value operator/(Value &&value) {
+            Value v = value.raiseTo(-1.0);
+            return (*this) * v;
+        }
+
+        Value operator/(Value &value) {
+            Value v = value.raiseTo(-1.0);
+            return (*this) * v;
+        }
+
+        Value exp() {
+            double x = this->data;
+            // Value current = *this;
+            Value v = Value(std::exp(x), this->outer.pimpl, "exp");
+            return v;
+        }
+
+        Value tanh() {
+            double x = this->data;
+            double t = (std::exp(2*x) - 1) / (std::exp(2*x) + 1);
+
+            Value v = Value(t, this->outer.pimpl, "tanh");
+            return v;
+        }
+
+        void backpropagate() {
+            this->grad = 1.0;
+
+            int index = 0;
+            std::unordered_set<Value::impl*> explored;
+            std::unordered_map<int, Value::impl*> propagateOrder;
+
+            this->sortIntoTopologicalOrder(this->outer.pimpl, explored, propagateOrder, index);
+
+            for (int i=index-1; i>-1; i--) {
+                propagateOrder[i]->backward();
+            }
+        }
+    };
+
+    std::shared_ptr<impl> pimpl;
+
+    Value(const double &value, const std::shared_ptr<impl>& a, std::string op = "", const std::shared_ptr<impl>& b = nullptr) {
+        pimpl = std::make_shared<impl>(*this, value, a, op, b);
+    }
+
+public:
+    Value() {
+        pimpl = std::make_shared<impl>(*this);
+    }
+
+    Value(const double &value) {
+        pimpl = std::make_shared<impl>(*this, value);
+    }
+    
+    Value (const double &value, const std::string &s) {
+        pimpl = std::make_shared<impl>(*this, value, s);
+    }
+
+    void setData(const double &d) {
+        pimpl->data = d;
+    };
+
+    double data() {
+        return pimpl->data;
+    }
+
+    void setLabel(const std::string &s) {
+        pimpl->label = s;
+    }
+
+    std::string label() {
+        return pimpl->label;
+    }
+    
+    std::string op() {
+        return pimpl->op;
     }
 
     void backpropagate() {
-        this->grad = 1.0;
-        this->internalBackpropagate();
+        pimpl->backpropagate();
+    }
+
+    template <typename T>
+    Value raiseTo(T value) {
+        return pimpl->raiseTo(value);
+    }
+
+    friend Value operator+(const double &value, Value &other) {
+        Value v = Value(value);
+        return v + other;
+    }
+
+    template <typename T>
+    Value operator+(T value) {
+        return *(this->pimpl) + value;
+    }
+    
+    friend Value operator-(const double &value, Value &other) {
+        Value v = Value(value);
+        return v - other;
+    }
+
+    template <typename T>
+    Value operator-(T value) {
+        return *(this->pimpl) - value;
+    }
+    
+    friend Value operator*(const double &value, Value &other) {
+        Value v = Value(value);
+        return v * other;
+    }
+
+    template <typename T>
+    Value operator*(T value) {
+        return *(this->pimpl) * value;
+    }
+    
+    friend Value operator/(const double &value, Value &other) {
+        Value v = Value(value);
+        return v / other;
+    }
+
+    template <typename T>
+    Value operator/(T value) {
+        return *(this->pimpl) / value;
+    }
+    
+    Value exp() {
+        return pimpl->exp();
+    }
+
+    Value tanh() {
+        return pimpl->tanh();
     }
 };
 
-Value operator+(const int &value, Value &other) {
-    Value v = Value(value);
-    return v + other;
-}
-Value operator-(const int &value, Value &other) {
-    Value v = Value(value);
-    return v - other;
-}
-Value operator*(const int &value, Value &other) {
-    Value v = Value(value);
-    return v * other;
 }

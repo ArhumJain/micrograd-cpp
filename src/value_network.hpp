@@ -1,25 +1,29 @@
 #pragma once
-
-#include <string>
+#include "value.hpp"
+#include "utils.hpp"
 #include <random>
 #include <fstream>
 #include <cstring>
 #include <ctime>
+#include <unordered_map>
+#include <functional>
 #include <graphviz/gvc.h>
 #include <graphviz/cgraph.h>
-#include "value.hpp"
 
+namespace grad 
+{
 class Value;
 
 class ValueNetwork {
 private:
-    Value* node;
+    std::shared_ptr<Value::impl> head;
+    std::unordered_map<Value::impl*, Agnode_t*> nodes = {};
     
     std::string randString() {
         const std::string CHARACTERS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
-        static std::random_device random_device;
-        static std::mt19937 generator(random_device());
+        // static std::random_device random_device;
+        // static std::mt19937 generator(random_device());
 
         std::uniform_int_distribution<> distribution(0, CHARACTERS.size() - 1);
 
@@ -27,26 +31,37 @@ private:
 
         for (std::size_t i = 0; i < 10; ++i)
         {
-            random_string += CHARACTERS[distribution(generator)];
+            // random_string += CHARACTERS[distribution(generator)];
+            random_string += CHARACTERS[distribution(Utils::generator)];
         }
 
         return random_string;
     }
     
-    void buildGraph(Agraph_t *G, Value* currentNode, Agnode_t *parent = nullptr) {
+    void buildGraph(Agraph_t* G, std::shared_ptr<Value::impl>& currentNode, Agnode_t* parent = nullptr) {
+        Value::impl* currentPtr = currentNode.get();
         char attributeLabel[] = "label";
         char attributeShape[] = "shape";
         char shapeEllipse[] = "ellipse";
         char labelEdge[] = "edge";
         
-        Agnode_t *current = agnode(G, &randString()[0], 1);
+        Agnode_t* current;
+        if (this->nodes.find(currentPtr) == this->nodes.end()) {
+            current = agnode(G, &randString()[0], 1);
+            this->nodes[currentPtr] = current;
+        } else {
+            current = this->nodes[currentPtr];
+            Agedge_t* currentToParent = agedge(G, current, parent, labelEdge, 1);
+            return;
+        }
+        
         std::string d = std::to_string(currentNode->data);
         std::string grad = std::to_string(currentNode->grad);
         std::string output = (currentNode->label == "" ? "" : currentNode->label + "\n") + "Data: " + d + "\nGrad: " + grad;
         agset(current, attributeLabel, &output[0]);
         
         if (parent != nullptr) {
-            Agedge_t *currentToParent = agedge(G, current, parent, labelEdge, 1);
+            Agedge_t* currentToParent = agedge(G, current, parent, labelEdge, 1);
         }
 
         if (currentNode->op == "") {
@@ -59,7 +74,7 @@ private:
         Agedge_t* opToCurrent = agedge(G, operation, current, labelEdge, 1);
 
         for (int i=0; i<2; i++) {
-            Value* child = currentNode->prev[i];
+            std::shared_ptr<Value::impl>& child = currentNode->getChild(i);
             if (child != nullptr) {
                 this->buildGraph(G, child, operation);
             }
@@ -67,8 +82,8 @@ private:
     }
     
 public:
-    ValueNetwork(Value *head) {
-        this->node = head;
+    ValueNetwork(Value &head) {
+        this->head = std::shared_ptr<Value::impl>(head.pimpl);
     }
 
     void createGraph(char filePath[]) {
@@ -82,7 +97,7 @@ public:
 
         char rankdir[] = "rankdir"; char LR[] = "LR";
         agattr(G, AGRAPH, rankdir, LR);
-        char dpi[] = "dpi"; char dpiValue[] = "512";
+        char dpi[] = "dpi"; char dpiValue[] = "256";
         agattr(G, AGRAPH, dpi, dpiValue);
         char shape[] = "shape"; char circle[] = "circle";
         agattr(G, AGNODE, shape, circle);
@@ -95,7 +110,7 @@ public:
         char fontsize[] = "fontsize"; char fontSizeValue[] = "12";
         agattr(G, AGNODE, fontsize, fontSizeValue);
         
-        this->buildGraph(G, this->node);
+        this->buildGraph(G, this->head);
 
         gvLayout(gvc, G, "dot");
         gvRenderFilename(gvc, G, "png", filePath);
@@ -103,3 +118,5 @@ public:
         agclose(G);
     }
 };
+
+}
