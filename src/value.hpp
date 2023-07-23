@@ -7,6 +7,7 @@
 #include <memory>
 #include <unordered_set>
 #include <unordered_map>
+#include "value_network.hpp"
 
 namespace grad 
 {
@@ -14,11 +15,11 @@ namespace grad
 class Value {
     friend class ValueNetwork;
 private:
-    class impl
+    class impl : public std::enable_shared_from_this<impl>
     {
     private:
         std::shared_ptr<impl> prev[2] = {nullptr, nullptr};
-        Value& outer; 
+        // Value& outer; 
 
         void backward() {
             if (this->op == "+") {
@@ -66,15 +67,15 @@ private:
         std::string label = "";
         std::string op = "";
         
-        impl(Value &outer) : outer(outer) {
+        impl(){
             this->data = 0.0;
         }
         
-        impl(Value &outer, double data) : outer(outer) {
+        impl(double data) {
             this->data = data;
         }
 
-        impl(Value &outer, double data, std::string label) : impl(outer, data) {
+        impl(double data, std::string label) : impl(data) {
             // this->data = data;
             this->label = label;
         }
@@ -85,7 +86,7 @@ private:
             const std::shared_ptr<impl>& a, 
             std::string op, 
             const std::shared_ptr<impl>& b = nullptr
-            ) : outer(outer) {
+            ) {
 
             this->data = data;
             prev[0] = std::shared_ptr<impl>(a);
@@ -93,6 +94,10 @@ private:
                 prev[1] = std::shared_ptr<impl>(b);
             }
             this->op = op;
+        }
+
+        std::shared_ptr<impl> getPtr() {
+            return shared_from_this();
         }
 
         std::shared_ptr<impl>& getChild(const int &i) {
@@ -106,7 +111,7 @@ private:
         
         Value raiseTo(Value &value) {
             double power = std::pow(this->data, value.data());
-            Value v = Value(power, this->outer.pimpl, "^", value.pimpl);
+            Value v = Value(power, this->getPtr(), "^", value.pimpl);
             return v;
         }
 
@@ -117,13 +122,13 @@ private:
 
         Value operator+(Value &&value) {
             double sum = this->data + value.data();
-            Value v = Value(sum, this->outer.pimpl, "+", value.pimpl);
+            Value v = Value(sum, this->getPtr(), "+", value.pimpl);
             return v;
         }
 
         Value operator+(Value &value) {
             double sum = this->data + value.data();
-            Value v = Value(sum, this->outer.pimpl, "+", value.pimpl);
+            Value v = Value(sum, this->getPtr(), "+", value.pimpl);
             return v;
         }
 
@@ -134,13 +139,13 @@ private:
 
         Value operator-(Value &&value) {
             double sum = this->data - value.data();
-            Value v = Value(sum, this->outer.pimpl, "-", value.pimpl);
+            Value v = Value(sum, this->getPtr(), "-", value.pimpl);
             return v;
         }
 
         Value operator-(Value &value) {
             double sum = this->data - value.data();
-            Value v = Value(sum, this->outer.pimpl, "-", value.pimpl);
+            Value v = Value(sum, this->getPtr(), "-", value.pimpl);
             return v;
         }
 
@@ -151,13 +156,13 @@ private:
 
         Value operator*(Value &&value) {
             double sum = this->data * value.data();
-            Value v = Value(sum, this->outer.pimpl, "*", value.pimpl);
+            Value v = Value(sum, this->getPtr(), "*", value.pimpl);
             return v;
         }
 
         Value operator*(Value &value) {
             double sum = this->data * value.data();
-            Value v = Value(sum, this->outer.pimpl, "*", value.pimpl);
+            Value v = Value(sum, this->getPtr(), "*", value.pimpl);
             return v;
         }
 
@@ -179,7 +184,7 @@ private:
         Value exp() {
             double x = this->data;
             // Value current = *this;
-            Value v = Value(std::exp(x), this->outer.pimpl, "exp");
+            Value v = Value(std::exp(x), this->getPtr(), "exp");
             return v;
         }
 
@@ -187,7 +192,7 @@ private:
             double x = this->data;
             double t = (std::exp(2*x) - 1) / (std::exp(2*x) + 1);
 
-            Value v = Value(t, this->outer.pimpl, "tanh");
+            Value v = Value(t, this->getPtr(), "tanh");
             return v;
         }
 
@@ -198,7 +203,8 @@ private:
             std::unordered_set<Value::impl*> explored;
             std::unordered_map<int, Value::impl*> propagateOrder;
 
-            this->sortIntoTopologicalOrder(this->outer.pimpl, explored, propagateOrder, index);
+            std::shared_ptr<impl> current = getPtr();
+            this->sortIntoTopologicalOrder(current, explored, propagateOrder, index);
 
             for (int i=index-1; i>-1; i--) {
                 propagateOrder[i]->backward();
@@ -206,23 +212,23 @@ private:
         }
     };
 
-    std::shared_ptr<impl> pimpl;
 
     Value(const double &value, const std::shared_ptr<impl>& a, std::string op = "", const std::shared_ptr<impl>& b = nullptr) {
         pimpl = std::make_shared<impl>(*this, value, a, op, b);
     }
 
 public:
+    std::shared_ptr<impl> pimpl;
     Value() {
-        pimpl = std::make_shared<impl>(*this);
+        pimpl = std::make_shared<impl>();
     }
 
     Value(const double &value) {
-        pimpl = std::make_shared<impl>(*this, value);
+        pimpl = std::make_shared<impl>(value);
     }
     
     Value (const double &value, const std::string &s) {
-        pimpl = std::make_shared<impl>(*this, value, s);
+        pimpl = std::make_shared<impl>(value, s);
     }
 
     void setData(const double &d) {
@@ -300,6 +306,11 @@ public:
 
     Value tanh() {
         return pimpl->tanh();
+    }
+
+    void generateGraph(std::string filePath) {
+        ValueNetwork n(*this);
+        n.createGraph(filePath.data());
     }
 };
 
