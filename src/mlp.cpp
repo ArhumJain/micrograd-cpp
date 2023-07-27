@@ -18,19 +18,8 @@ namespace grad {
 
     std::vector<Value> MLP::passInputs(std::vector<Value> inputs) {
         std::vector<Value> outputs = inputs;
-        int whichLayer = 0;      
         for (Layer& layer: this->layers) {
-            // std::cout << "HI" << std::endl;
-            // std::cout << outputs.size() << std::endl;
-            // if (outputs[0].data() != outputs[0].data()) {
-            //     std::cout << "IS NAN WHY!!" << std::endl;
-            //     std::cout << layer.neurons.size() << std::endl;
-            //     std::cout << whichLayer << std::endl;
-            //     return {};
-            // }
             outputs = layer.passInputs(outputs);
-            whichLayer++;
-            // std::cout << outputs.size() << std::endl;
         }
         
         return outputs;

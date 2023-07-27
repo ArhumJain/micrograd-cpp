@@ -17,6 +17,12 @@ namespace grad {
             prev[0]->grad += (1 - (this->data * this->data)) * this->grad;
         } else if (this->op == "exp") {
             prev[0]->grad += this->data * this->grad;
+        } else if (this->op == "relu") {
+            if (this->data == 0) {
+                prev[0]->grad += 0.0 * this->grad;
+            } else {
+                prev[0]->grad += 1.0 * this->grad;
+            }
         } else if (this->op == "^") {
             double exponent = prev[1]->data;
             prev[0]->grad += exponent * (std::pow(prev[0]->data, exponent-1)) * this->grad; 
@@ -174,6 +180,11 @@ namespace grad {
         return v;
     }
 
+    Value Value::impl::relu() {
+        Value v = Value(std::max(0.0, this->data), this->getPtr(), "relu");
+        return v;
+    }
+
     void Value::impl::backpropagate() {
         this->grad = 1.0;
 
@@ -287,6 +298,10 @@ namespace grad {
 
     Value Value::tanh() {
         return pimpl->tanh();
+    }
+
+    Value Value::relu() {
+        return pimpl->relu();
     }
 
     std::ostream& operator<<(std::ostream& o, Value& v) {

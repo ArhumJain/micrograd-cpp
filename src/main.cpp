@@ -74,29 +74,8 @@ int main() {
         loss.backward();
         std::cout << network.layers[0].neurons[0].weights[0].grad() << std::endl;
 
-        network.updateParameters(-0.05);
+        network.updateParameters(-0.5);
     }
-
-    // yPred.clear();
-
-    // for (auto& train: xTrain) {
-    //     // std::cout << train.size() << std::endl;
-    //     yPred.push_back(network.passInputs(train)[0]);
-    // }
-
-    // Value loss = Loss::meanSquaredError(yPred, targets);
-
-    // std::cout << loss << std::endl;
-    // std::cout << network.layers[0].neurons[0].weights[0].data() << std::endl;
-    // loss.backward();
-    // std::cout << network.layers[0].neurons[0].weights[0].data() << std::endl;
-    // network.updateParameters(-0.01);
-    // std::cout << network.layers[0].neurons[0].weights[0].data() << std::endl;
-    
-    
-    
-
-
     
     return 0;
 }

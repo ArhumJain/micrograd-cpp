@@ -59,6 +59,7 @@ namespace grad {
             
             Value exp();
             Value tanh();
+            Value relu();
 
             void backpropagate();
         };
@@ -120,6 +121,7 @@ namespace grad {
         
         Value exp();
         Value tanh();
+        Value relu();
         
         friend std::ostream& operator<<(std::ostream& o, Value& v);
         

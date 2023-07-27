@@ -11,6 +11,7 @@ private:
     static std::mt19937 generator;
 
     friend class Neuron;
+    friend class Feature;
     friend class Value;
     friend class ValueNetwork;
     
