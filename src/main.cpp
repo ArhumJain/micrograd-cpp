@@ -2,16 +2,19 @@
 #include "value.h"
 #include "value_network.h"
 #include "mlp.h"
+#include "value.h"
+#include "value_tensor.h"
 #include <vector>
 
+#include <chrono>
 // #include "value_network.hpp"
 // #include "value.hpp"
 // #include "neuron.hpp"
 
 using namespace grad;
 
+using namespace std::chrono;
 int main() {
-    std::cout << "HELLO WORLD!" << std::endl;
     // Value x1 = Value(2.0, "x1");
     // Value x2 = Value(0.0, "x2");
 
@@ -74,7 +77,7 @@ int main() {
         loss.backward();
         std::cout << network.layers[0].neurons[0].weights[0].grad() << std::endl;
 
-        network.updateParameters(-0.5);
+        network.updateParameters(-0.1);
     }
     
     return 0;
